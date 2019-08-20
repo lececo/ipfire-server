@@ -1,9 +1,9 @@
 .DS_Store
-./*/*.aux
-./*/*.log
-./*/*.out
-./*/*.pdf
-./*/*.toc
-
-./*/*.gz
-./*/*.fls
+*.aux
+*.log
+*.out
+*.pdf
+*.toc
+*.gz
+*.fls
+*latexmk
