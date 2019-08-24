@@ -1,0 +1,71 @@
+# You can check in the IPFire web UI, via iptables in CUSTOMFORWARDCHAIN the per# host usage.
+
+QUOTA=`grep QUOTA= /var/ipfire/connscheduler/connscheduler.conf | grep on, | tail -1 | cut -f2 -d=`
+NOQUOTA=0
+if [ "$QUOTA" = "0" ] || [ "$QUOTA" = "" ]
+then
+ NOQUOTA=1
+ echo "Per-host data quota disabled."
+else
+ echo "Per-host data quota set to $QUOTA MB."
+ # Convert the quota value to bytes
+ QUOTA=`expr $QUOTA \* 1048576`
+ # Generate quota IP list from DHCP range
+ RANGE=`grep range /var/ipfire/dhcp/dhcpd.conf | cut -f2 -de`
+ NET=`echo $RANGE | cut -f1-3 -d. | cut -f2 -d' '`
+ START=`echo $RANGE | cut -f4 -d. | cut -f1 -d' '`
+ END=`echo $RANGE | cut -f7 -d. | cut -f1 -d';'`
+ num=$START
+ # The script will create a list of IP addresses using the IPFire DHCP range
+ QUOTALIST="/etc/sysconfig/quota_ip_list"
+ rm $QUOTALIST
+ while [ $num -le $END ]
+ do
+  echo $NET.$num>>$QUOTALIST
+  num=`expr $num + 1`
+ done
+ fi
+#
+# See how we were called.
+case "$1" in
+ start)
+       ## add your 'start' rules here
+       # Optional: Prevent DNS hijacking by forcing all DNS requests to IPFire
+       # (see http://planet.ipfire.org/post/use-ipfire-to-protect-you-from-dnschanger)
+       iptables -t nat -A CUSTOMPREROUTING ! -o orange0 -p udp --destination-port 53 -j REDIRECT --to-ports 53
+       #
+       if [ $NOQUOTA = 0 ]
+       then
+        for HOST in `cat $QUOTALIST`; do
+         # Create a new chain for each host
+         iptables -N QUOTA_$HOST
+         # Process any WAN traffic to/from the host with the chain
+         iptables -A CUSTOMFORWARD -d $HOST -g QUOTA_$HOST
+         iptables -A CUSTOMFORWARD -s $HOST -g QUOTA_$HOST
+         # All traffic (up or down) counts against the quota
+         iptables -A QUOTA_$HOST -m quota --quota $QUOTA -j ACCEPT
+         # Optionally, create a QoS class to rate-limit overquota hosts
+         #iptables -A QUOTA_$HOST -j CLASSIFY --set-class 2:209
+         # Or just drop WAN traffic to/from overquota hosts
+         iptables -A QUOTA_$HOST -j DROP
+        done
+       fi
+       ;;
+ stop)
+       ## add your 'stop' rules here
+       iptables -t nat -F CUSTOMPREROUTING
+       iptables -F CUSTOMFORWARD
+       for HOST in `cat $QUOTALIST`; do
+        iptables -F QUOTA_$HOST
+        iptables -X QUOTA_$HOST
+       done
+       ;;
+ reload)
+       $0 stop
+       $0 start
+       ## add your 'reload' rules here
+       ;;
+ *)
+       echo "Usage: $0 {start|stop|reload}"
+       ;;
+esac
