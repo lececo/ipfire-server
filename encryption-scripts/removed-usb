@@ -1,0 +1,25 @@
+#! /bin/sh 
+
+date >> /tmp/usb.log
+printf "Removing usb device /mnt/usb\n" >> /tmp/usb.log
+printf "Stopping samba\n" >> /tmp/usb.log
+
+/etc/init.d/samba stop > /dev/null 2>&1
+sleep 1
+printf "unmounting /mnt/usb\n" >> /tmp/usb.log
+umount -l /mnt/usb > /dev/null 2>&1
+# close luks
+sleep 2
+printf "closing luks /dev/mapper/backup2\n" >> /tmp/usb.log 
+cryptsetup luksClose /dev/mapper/backup2 >> /tmp/usb.log
+
+if [ $? -ne 0 ]; then 
+	printf "cannot close luks /dev/mapper/backup2" >> /tmp/usb.log
+	exit 1
+fi
+
+if [ -e /mnt/usb ]; then
+	rm -rf /mnt/usb
+fi
+
+printf "unmounining finished\n" >> /tmp/usb.log
